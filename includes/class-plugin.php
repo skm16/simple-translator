@@ -202,23 +202,41 @@ class Plugin {
      * Setup plugin hooks
      */
     private function setup_hooks() {
+       
+
         // Add rewrite rules
-        add_action('init', [$this->url_manager, 'add_rewrite_rules'], 10);
+    add_action('init', [$this->url_manager, 'add_rewrite_rules'], 10);
 
-        // Filter queries by language
-        add_action('pre_get_posts', [$this->url_manager, 'filter_queries'], 10);
+    // Filter queries by language
+    add_action('pre_get_posts', [$this->url_manager, 'filter_queries'], 10);
 
-        // Add language query var
-        add_filter('query_vars', [$this, 'add_query_vars']);
+    // Add language query var
+    add_filter('query_vars', [$this, 'add_query_vars']);
 
-        // Set front page for language-only URLs (/es/, /fr/, etc.)
-        add_filter('request', [$this->url_manager, 'set_front_page_for_language']);
+    // CRITICAL: Parse request to map clean URLs to suffixed slugs
+    // This is what makes /es/about/ find the post with slug about-es
+    add_filter('request', [$this->url_manager, 'parse_request'], 5);
 
-        // Handle post deletion
-        add_action('before_delete_post', [$this, 'handle_post_deletion']);
+    // Set front page for language-only URLs (/es/, /fr/, etc.)
+    add_filter('request', [$this->url_manager, 'set_front_page_for_language'], 10);
 
-        // Handle post status changes
-        add_action('transition_post_status', [$this, 'handle_status_transition'], 10, 3);
+    // Filter permalinks to show clean URLs
+    add_filter('post_link', [$this->url_manager, 'filter_post_link'], 10, 2);
+    add_filter('page_link', [$this->url_manager, 'filter_post_link'], 10, 2);
+    add_filter('post_type_link', [$this->url_manager, 'filter_post_link'], 10, 2);
+
+    // Handle post deletion
+    add_action('before_delete_post', [$this, 'handle_post_deletion']);
+
+    // Handle post status changes
+    add_action('transition_post_status', [$this, 'handle_status_transition'], 10, 3);
+
+    // Redirect to correct language if needed
+    add_action('template_redirect', [$this->url_manager, 'redirect_to_language']);
+
+
+
+        
     }
 
     /**
@@ -419,8 +437,5 @@ class Plugin {
         return in_array($post_type, $translatable_types, true);
     }
 
-    // Parse request to handle language routing
-    add_filter('request', [$this->url_manager, 'parse_request']);
-    add_filter('request', [$this->url_manager, 'set_front_page_for_language']);
-
+ 
 }

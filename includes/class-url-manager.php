@@ -1,6 +1,6 @@
 <?php
 /**
- * URL Manager Class - FIXED VERSION
+ * URL Manager Class - COMPLETE FIX
  *
  * Handles language detection and URL rewriting
  * This version properly maps clean URLs to suffixed slugs
@@ -51,7 +51,6 @@ class URL_Manager {
 
     /**
      * Add rewrite rules for language prefixes
-     * FIXED: Properly maps clean URLs to suffixed slugs
      */
     public function add_rewrite_rules() {
         // Only add rules for non-default languages
@@ -61,55 +60,62 @@ class URL_Manager {
             return;
         }
 
-        // Add rules for each language
-        foreach ($languages as $lang) {
-            // Homepage with language: /es/
-            add_rewrite_rule(
-                '^' . $lang . '/?$',
-                'index.php?lang=' . $lang,
-                'top'
-            );
+        // Create regex for language codes
+        $lang_regex = implode('|', array_map('preg_quote', $languages));
 
-            // Single level pages: /es/about/ -> about-es
-            add_rewrite_rule(
-                '^' . $lang . '/([^/]+)/?$',
-                'index.php?pagename=$matches[1]&lang=' . $lang,
-                'top'
-            );
+        // Add language prefix rules
+        // Homepage with language: /es/
+        add_rewrite_rule(
+            '^(' . $lang_regex . ')/?$',
+            'index.php?lang=$matches[1]',
+            'top'
+        );
 
-            // Multi-level pages: /es/parent/child/ -> parent-es/child-es
-            add_rewrite_rule(
-                '^' . $lang . '/(.+?)/?$',
-                'index.php?pagename=$matches[1]&lang=' . $lang,
-                'top'
-            );
+        // Any page with language: /es/about/
+        add_rewrite_rule(
+            '^(' . $lang_regex . ')/(.+?)/?$',
+            'index.php?lang=$matches[1]&pagename=$matches[2]',
+            'top'
+        );
 
-            // Blog posts with dates: /es/2024/01/post-name/
-            add_rewrite_rule(
-                '^' . $lang . '/([0-9]{4})/([0-9]{1,2})/([0-9]{1,2})/([^/]+)/?$',
-                'index.php?year=$matches[1]&monthnum=$matches[2]&day=$matches[3]&name=$matches[4]&lang=' . $lang,
-                'top'
-            );
+        // Posts with language: /es/2024/01/post-name/
+        add_rewrite_rule(
+            '^(' . $lang_regex . ')/([0-9]{4})/([0-9]{1,2})/([0-9]{1,2})/([^/]+)/?$',
+            'index.php?lang=$matches[1]&year=$matches[2]&monthnum=$matches[3]&day=$matches[4]&name=$matches[5]',
+            'top'
+        );
 
-            // Category archives: /es/category/news/
-            add_rewrite_rule(
-                '^' . $lang . '/category/(.+?)/?$',
-                'index.php?category_name=$matches[1]&lang=' . $lang,
-                'top'
-            );
+        add_rewrite_rule(
+            '^(' . $lang_regex . ')/([0-9]{4})/([0-9]{1,2})/([^/]+)/?$',
+            'index.php?lang=$matches[1]&year=$matches[2]&monthnum=$matches[3]&name=$matches[4]',
+            'top'
+        );
 
-            // Tag archives: /es/tag/news/
-            add_rewrite_rule(
-                '^' . $lang . '/tag/(.+?)/?$',
-                'index.php?tag=$matches[1]&lang=' . $lang,
-                'top'
-            );
-        }
+        // Category archives with language: /es/category/news/
+        add_rewrite_rule(
+            '^(' . $lang_regex . ')/category/(.+?)/?$',
+            'index.php?lang=$matches[1]&category_name=$matches[2]',
+            'top'
+        );
+
+        // Tag archives with language: /es/tag/news/
+        add_rewrite_rule(
+            '^(' . $lang_regex . ')/tag/(.+?)/?$',
+            'index.php?lang=$matches[1]&tag=$matches[2]',
+            'top'
+        );
+
+        // Author archives with language: /es/author/john/
+        add_rewrite_rule(
+            '^(' . $lang_regex . ')/author/(.+?)/?$',
+            'index.php?lang=$matches[1]&author_name=$matches[2]',
+            'top'
+        );
     }
 
     /**
      * Parse request to map clean URLs to actual post slugs with language suffixes
-     * FIXED: This is the key method that makes clean URLs work with suffixed slugs
+     * CRITICAL: This is what makes clean URLs work with suffixed slugs
      *
      * @param array $query_vars Query variables
      * @return array Modified query variables
@@ -185,50 +191,6 @@ class URL_Manager {
     }
 
     /**
-     * Filter post permalink to show clean URLs without language suffixes
-     * FIXED: Removes language suffix from URLs for clean display
-     *
-     * @param string  $permalink Post permalink
-     * @param \WP_Post $post      Post object
-     * @return string Modified permalink
-     */
-    public function filter_post_link($permalink, $post) {
-        // Get post language
-        $lang = get_post_meta($post->ID, '_language', true);
-
-        // If no language set or default language, return original
-        if (!$lang || $lang === $this->default_language) {
-            return $permalink;
-        }
-
-        // Remove language suffix from the URL
-        $permalink = $this->remove_language_suffix_from_url($permalink, $lang);
-
-        // Add language prefix
-        $home_url = trailingslashit(home_url());
-        $permalink = str_replace($home_url, $home_url . $lang . '/', $permalink);
-
-        return $permalink;
-    }
-
-    /**
-     * Remove language suffix from URL
-     *
-     * @param string $url URL with language suffix
-     * @param string $lang Language code
-     * @return string Clean URL without suffix
-     */
-    private function remove_language_suffix_from_url($url, $lang) {
-        // Pattern to match language suffix before trailing slash or end of URL
-        $pattern = '/-' . preg_quote($lang, '/') . '(\/|$)/';
-        
-        // Replace suffix with just the slash or end
-        $url = preg_replace($pattern, '$1', $url);
-        
-        return $url;
-    }
-
-    /**
      * Get URL for a specific language version
      *
      * @param int    $post_id Post ID
@@ -244,47 +206,14 @@ class URL_Manager {
         }
 
         $translation_id = $translations[$lang];
-        
-        // Get the permalink (will be filtered by filter_post_link)
         $url = get_permalink($translation_id);
 
-        return $url;
-    }
-
-    /**
-     * Set front page for language-only URLs like /es/
-     * FIXED: Properly handles homepage translations
-     *
-     * @param array $query_vars Query variables
-     * @return array Modified query variables
-     */
-    public function set_front_page_for_language($query_vars) {
-        // Check if we have just a language and nothing else
-        if (isset($query_vars['lang']) && 
-            !isset($query_vars['pagename']) && 
-            !isset($query_vars['name']) &&
-            !isset($query_vars['category_name']) &&
-            !isset($query_vars['tag'])) {
-            
-            $lang = $query_vars['lang'];
-            
-            // Get the front page ID
-            $front_page_id = get_option('page_on_front');
-            
-            if ($front_page_id) {
-                // Get the translation of the front page
-                $clone_manager = new Clone_Manager();
-                $translation_id = $clone_manager->get_translation($front_page_id, $lang);
-                
-                if ($translation_id) {
-                    // Set the page_id to show the translated front page
-                    $query_vars['page_id'] = $translation_id;
-                    unset($query_vars['lang']); // Remove lang to prevent query conflicts
-                }
-            }
+        if (!$url) {
+            return false;
         }
-        
-        return $query_vars;
+
+        // The filter_post_link will handle making it clean
+        return $url;
     }
 
     /**
@@ -299,16 +228,21 @@ class URL_Manager {
         }
 
         // Check query string first (fallback method)
+        // Only use get_query_var if WordPress is fully loaded
         global $wp_query;
-        if ($wp_query && method_exists($wp_query, 'get')) {
-            $lang = $wp_query->get('lang');
+        if ($wp_query) {
+            $lang = get_query_var('lang');
             if ($lang && in_array($lang, $this->languages, true)) {
                 $this->current_language = $lang;
                 return $this->current_language;
             }
+        } elseif (isset($_GET['lang']) && in_array($_GET['lang'], $this->languages, true)) {
+            // Fallback if WordPress not fully loaded yet
+            $this->current_language = sanitize_text_field($_GET['lang']);
+            return $this->current_language;
         }
 
-        // Check URL path
+        // Check URL path (sanitize to prevent injection)
         $request_uri = isset($_SERVER['REQUEST_URI']) ? esc_url_raw($_SERVER['REQUEST_URI']) : '';
         $path = trim(parse_url($request_uri, PHP_URL_PATH), '/');
 
@@ -320,6 +254,12 @@ class URL_Manager {
                 $this->current_language = $parts[0];
                 return $this->current_language;
             }
+        }
+
+        // Check session/cookie for language preference
+        if (isset($_COOKIE['st_language']) && in_array($_COOKIE['st_language'], $this->languages, true)) {
+            $this->current_language = $_COOKIE['st_language'];
+            return $this->current_language;
         }
 
         // Default to site's default language
@@ -370,7 +310,8 @@ class URL_Manager {
     }
 
     /**
-     * Modify permalink for translations
+     * Modify permalink for translations to show clean URLs
+     * CRITICAL: Removes language suffix from URLs
      *
      * @param string  $permalink Post permalink
      * @param \WP_Post $post      Post object
@@ -385,9 +326,25 @@ class URL_Manager {
             return $permalink;
         }
 
+        // Remove the language suffix from the URL (e.g., -es, -fr)
+        $permalink = str_replace('-' . $lang . '/', '/', $permalink);
+        $permalink = str_replace('-' . $lang, '', $permalink);
+
         // Add language prefix
         $home_url = trailingslashit(home_url());
         $permalink = str_replace($home_url, $home_url . $lang . '/', $permalink);
+
+        // Special handling for homepage
+        $page_on_front = get_option('page_on_front');
+        if ($page_on_front && $post->ID) {
+            $clone_manager = new Clone_Manager();
+            $translations = $clone_manager->get_translations($page_on_front);
+            
+            if (isset($translations[$lang]) && $translations[$lang] == $post->ID) {
+                // This is a homepage translation
+                return $home_url . $lang . '/';
+            }
+        }
 
         return $permalink;
     }
@@ -542,77 +499,38 @@ class URL_Manager {
     }
 
     /**
-     * Generate language switcher URLs
-     *
-     * @return array Array of language => URL pairs
-     */
-    public function get_switcher_urls() {
-        $urls = array();
-
-        // If we're on a singular post/page, get translations
-        if (is_singular()) {
-            global $post;
-
-            $clone_manager = new Clone_Manager();
-            $translations = $clone_manager->get_translations($post->ID);
-
-            foreach ($this->languages as $lang) {
-                if (isset($translations[$lang])) {
-                    $urls[$lang] = $this->get_translation_url($post->ID, $lang);
-                } else {
-                    // No translation available, link to homepage in that language
-                    $urls[$lang] = $this->get_home_url($lang);
-                }
-            }
-        } else {
-            // For archives and other pages, just link to homepages
-            foreach ($this->languages as $lang) {
-                $urls[$lang] = $this->get_home_url($lang);
-            }
-        }
-
-        return $urls;
-    }
-
-    /**
      * Set front page for language-only URLs
-     *
-     * When visiting /es/ with no specific page, show the translated front page
+     * Maps /es/ to the Spanish homepage
      *
      * @param array $query_vars Query variables
      * @return array Modified query variables
      */
     public function set_front_page_for_language($query_vars) {
-        // Check if we have a language query var but no specific content
-        if (isset($query_vars['lang']) &&
-            empty($query_vars['pagename']) &&
-            empty($query_vars['name']) &&
-            empty($query_vars['page_id']) &&
-            empty($query_vars['p'])) {
-
-            // Only handle if WordPress is set to use a static front page
-            if (get_option('show_on_front') === 'page') {
-                $front_page_id = (int) get_option('page_on_front');
-
-                if ($front_page_id) {
-                    // Find the translation of the front page
-                    $clone_manager = new Clone_Manager();
-                    $translations = $clone_manager->get_translations($front_page_id);
-                    $lang = $query_vars['lang'];
-
-                    if (isset($translations[$lang])) {
-                        // Set the translated page as the page to display
-                        $query_vars['page_id'] = $translations[$lang];
-                        $query_vars['pagename'] = '';
-
-                        // Remove language from query vars so it doesn't interfere
-                        // We'll still track it via post meta
-                        unset($query_vars['lang']);
-                    }
+        // Check if we have just a language and nothing else
+        if (isset($query_vars['lang']) && 
+            !isset($query_vars['pagename']) && 
+            !isset($query_vars['name']) &&
+            !isset($query_vars['category_name']) &&
+            !isset($query_vars['tag'])) {
+            
+            $lang = $query_vars['lang'];
+            
+            // Get the front page ID
+            $front_page_id = get_option('page_on_front');
+            
+            if ($front_page_id) {
+                // Get the translation of the front page
+                $clone_manager = new Clone_Manager();
+                $translation_id = $clone_manager->get_translation($front_page_id, $lang);
+                
+                if ($translation_id) {
+                    // Set the page_id to show the translated front page
+                    $query_vars['page_id'] = $translation_id;
+                    unset($query_vars['lang']); // Remove lang to prevent query conflicts
                 }
             }
         }
-
+        
         return $query_vars;
     }
 }
