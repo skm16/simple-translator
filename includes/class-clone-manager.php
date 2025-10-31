@@ -1,8 +1,9 @@
 <?php
 /**
- * Clone Manager Class
+ * Clone Manager Class - FIXED VERSION
  *
  * Handles post cloning and translation management
+ * This version properly handles WordPress slug constraints
  *
  * @package SimpleTranslator
  */
@@ -21,6 +22,7 @@ class Clone_Manager {
 
     /**
      * Create a translation by cloning a post
+     * FIXED: Properly handles slugs with language suffixes
      *
      * @param int    $source_id   Source post ID
      * @param string $target_lang Target language code
@@ -63,10 +65,14 @@ class Clone_Manager {
             );
         }
 
+        // FIXED: Generate proper slug with language suffix
+        $base_slug = $this->get_base_slug($source->post_name);
+        $new_slug = $this->generate_translation_slug($base_slug, $target_lang, $source->post_type);
+
         // Clone the post
         $new_post = array(
-            'post_title'    => $source->post_title, // Keep original title (user can translate)
-            'post_name'     => $source->post_name,  // Explicitly copy slug to prevent auto-generation
+            'post_title'    => $source->post_title, // Keep original title for user to translate
+            'post_name'     => $new_slug,           // Use properly suffixed slug
             'post_content'  => $source->post_content,
             'post_excerpt'  => $source->post_excerpt,
             'post_status'   => 'draft', // Always start as draft
@@ -74,7 +80,7 @@ class Clone_Manager {
             'post_author'   => get_current_user_id(),
             'menu_order'    => $source->menu_order,
             'post_password' => $source->post_password,
-            'post_parent'   => 0, // Don't clone parent relationships initially
+            'post_parent'   => $this->get_translated_parent($source->post_parent, $target_lang),
             'comment_status' => $source->comment_status,
             'ping_status'   => $source->ping_status,
         );
@@ -91,33 +97,86 @@ class Clone_Manager {
         update_post_meta($new_id, '_translation_group_id', $group_id);
         update_post_meta($new_id, '_translation_status', 'not_started');
         update_post_meta($new_id, '_source_post_id', $source_id);
-        update_post_meta($new_id, '_translation_last_sync', current_time('timestamp'));
+        update_post_meta($new_id, '_translation_last_sync', current_time('mysql'));
 
-        // Clone taxonomies
-        $this->clone_taxonomies($source_id, $new_id);
+        // Clone taxonomies if enabled
+        if (get_option('st_sync_taxonomies', true)) {
+            $this->clone_taxonomies($source_id, $new_id);
+        }
 
         // Clone featured image
         $this->clone_featured_image($source_id, $new_id);
 
-        // Clone custom fields (excluding private meta)
+        // Clone custom fields
         $this->clone_custom_fields($source_id, $new_id);
 
-        // Clone ACF fields if present
+        // Clone ACF fields if available
         if (function_exists('acf_get_field_groups')) {
             $this->clone_acf_fields($source_id, $new_id);
         }
 
-        // Handle form associations
-        $this->clone_form_associations($source_id, $new_id);
-
-        // Fire action for extensibility
-        do_action('st_after_create_translation', $new_id, $source_id, $target_lang);
-
-        // Clear caches
+        // Clear translation cache
         $this->clear_translation_cache($source_id);
         $this->clear_translation_cache($new_id);
 
+        // Log the creation
+        do_action('st_translation_created', $new_id, $source_id, $target_lang);
+
         return $new_id;
+    }
+
+    /**
+     * Get base slug without language suffixes
+     *
+     * @param string $slug Current slug
+     * @return string Base slug
+     */
+    private function get_base_slug($slug) {
+        // Remove any existing language suffixes (2-3 letter codes)
+        $base = preg_replace('/-[a-z]{2,3}$/', '', $slug);
+        
+        // Also remove numeric suffixes that WordPress might have added
+        $base = preg_replace('/-\d+$/', '', $base);
+        
+        return $base;
+    }
+
+    /**
+     * Generate a unique translation slug with language suffix
+     *
+     * @param string $base_slug Base slug without suffixes
+     * @param string $lang Language code
+     * @param string $post_type Post type
+     * @return string Unique slug with language suffix
+     */
+    private function generate_translation_slug($base_slug, $lang, $post_type) {
+        // For default language, use base slug
+        $default_lang = get_option('st_default_language', 'en');
+        if ($lang === $default_lang) {
+            return wp_unique_post_slug($base_slug, 0, 'draft', $post_type, 0);
+        }
+        
+        // For other languages, add language suffix
+        $slug = $base_slug . '-' . $lang;
+        
+        // Ensure uniqueness (WordPress will add -2, -3 if needed after the language suffix)
+        return wp_unique_post_slug($slug, 0, 'draft', $post_type, 0);
+    }
+
+    /**
+     * Get translated parent ID if exists
+     *
+     * @param int    $parent_id Parent post ID
+     * @param string $lang Target language
+     * @return int Translated parent ID or 0
+     */
+    private function get_translated_parent($parent_id, $lang) {
+        if (!$parent_id) {
+            return 0;
+        }
+        
+        $parent_translation = $this->get_translation($parent_id, $lang);
+        return $parent_translation ? $parent_translation : 0;
     }
 
     /**
@@ -125,7 +184,7 @@ class Clone_Manager {
      *
      * @param int    $post_id Post ID
      * @param string $lang    Language code
-     * @return int|false Translation post ID or false if not found
+     * @return int|false Translation post ID or false
      */
     public function get_translation($post_id, $lang) {
         $translations = $this->get_translations($post_id);
@@ -139,42 +198,37 @@ class Clone_Manager {
      * @return array Array of language => post_id pairs
      */
     public function get_translations($post_id) {
+        // Check cache first
+        $cache_key = 'st_translations_' . $post_id;
+        $cached = get_transient($cache_key);
+        if ($cached !== false) {
+            return $cached;
+        }
+
         // Get translation group ID
         $group_id = get_post_meta($post_id, '_translation_group_id', true);
         if (!$group_id) {
             return array();
         }
 
-        // Try cache first
-        $cache_key = 'st_translations_' . $post_id;
-        $cached = get_transient($cache_key);
-        if (false !== $cached) {
-            return $cached;
-        }
+        global $wpdb;
 
-        // Query all posts with same group ID
-        $args = array(
-            'post_type'      => 'any',
-            'post_status'    => 'any',
-            'posts_per_page' => -1,
-            'meta_query'     => array(
-                array(
-                    'key'     => '_translation_group_id',
-                    'value'   => $group_id,
-                    'compare' => '='
-                )
-            ),
-            'fields' => 'ids'
-        );
+        // Get all posts in the same translation group
+        $posts = $wpdb->get_results($wpdb->prepare(
+            "SELECT p.ID, pm_lang.meta_value as language
+            FROM {$wpdb->posts} p
+            INNER JOIN {$wpdb->postmeta} pm_group ON p.ID = pm_group.post_id
+            INNER JOIN {$wpdb->postmeta} pm_lang ON p.ID = pm_lang.post_id
+            WHERE pm_group.meta_key = '_translation_group_id'
+            AND pm_group.meta_value = %s
+            AND pm_lang.meta_key = '_language'
+            AND p.post_status != 'trash'",
+            $group_id
+        ));
 
-        $posts = get_posts($args);
         $translations = array();
-
-        foreach ($posts as $id) {
-            $lang = get_post_meta($id, '_language', true);
-            if ($lang) {
-                $translations[$lang] = $id;
-            }
+        foreach ($posts as $post) {
+            $translations[$post->language] = (int) $post->ID;
         }
 
         // Cache for 1 hour
@@ -184,7 +238,7 @@ class Clone_Manager {
     }
 
     /**
-     * Clear translation cache for a post
+     * Clear translation cache
      *
      * @param int $post_id Post ID
      */

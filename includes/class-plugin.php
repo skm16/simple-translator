@@ -418,4 +418,9 @@ class Plugin {
         $translatable_types = get_option('st_post_types', array('post', 'page'));
         return in_array($post_type, $translatable_types, true);
     }
+
+    // Parse request to handle language routing
+    add_filter('request', [$this->url_manager, 'parse_request']);
+    add_filter('request', [$this->url_manager, 'set_front_page_for_language']);
+
 }

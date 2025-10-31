@@ -1,8 +1,9 @@
 <?php
 /**
- * URL Manager Class
+ * URL Manager Class - FIXED VERSION
  *
  * Handles language detection and URL rewriting
+ * This version properly maps clean URLs to suffixed slugs
  *
  * @package SimpleTranslator
  */
@@ -50,6 +51,7 @@ class URL_Manager {
 
     /**
      * Add rewrite rules for language prefixes
+     * FIXED: Properly maps clean URLs to suffixed slugs
      */
     public function add_rewrite_rules() {
         // Only add rules for non-default languages
@@ -59,57 +61,171 @@ class URL_Manager {
             return;
         }
 
-        // Create regex for language codes
-        $lang_regex = implode('|', array_map('preg_quote', $languages));
+        // Add rules for each language
+        foreach ($languages as $lang) {
+            // Homepage with language: /es/
+            add_rewrite_rule(
+                '^' . $lang . '/?$',
+                'index.php?lang=' . $lang,
+                'top'
+            );
 
-        // Add language prefix rules
-        // Homepage with language: /es/
-        add_rewrite_rule(
-            '^(' . $lang_regex . ')/?$',
-            'index.php?lang=$matches[1]',
-            'top'
-        );
+            // Single level pages: /es/about/ -> about-es
+            add_rewrite_rule(
+                '^' . $lang . '/([^/]+)/?$',
+                'index.php?pagename=$matches[1]&lang=' . $lang,
+                'top'
+            );
 
-        // Any page with language: /es/about/
-        add_rewrite_rule(
-            '^(' . $lang_regex . ')/(.+?)/?$',
-            'index.php?lang=$matches[1]&pagename=$matches[2]',
-            'top'
-        );
+            // Multi-level pages: /es/parent/child/ -> parent-es/child-es
+            add_rewrite_rule(
+                '^' . $lang . '/(.+?)/?$',
+                'index.php?pagename=$matches[1]&lang=' . $lang,
+                'top'
+            );
 
-        // Posts with language: /es/2024/01/post-name/
-        add_rewrite_rule(
-            '^(' . $lang_regex . ')/([0-9]{4})/([0-9]{1,2})/([0-9]{1,2})/([^/]+)/?$',
-            'index.php?lang=$matches[1]&year=$matches[2]&monthnum=$matches[3]&day=$matches[4]&name=$matches[5]',
-            'top'
-        );
+            // Blog posts with dates: /es/2024/01/post-name/
+            add_rewrite_rule(
+                '^' . $lang . '/([0-9]{4})/([0-9]{1,2})/([0-9]{1,2})/([^/]+)/?$',
+                'index.php?year=$matches[1]&monthnum=$matches[2]&day=$matches[3]&name=$matches[4]&lang=' . $lang,
+                'top'
+            );
 
-        add_rewrite_rule(
-            '^(' . $lang_regex . ')/([0-9]{4})/([0-9]{1,2})/([^/]+)/?$',
-            'index.php?lang=$matches[1]&year=$matches[2]&monthnum=$matches[3]&name=$matches[4]',
-            'top'
-        );
+            // Category archives: /es/category/news/
+            add_rewrite_rule(
+                '^' . $lang . '/category/(.+?)/?$',
+                'index.php?category_name=$matches[1]&lang=' . $lang,
+                'top'
+            );
 
-        // Category archives with language: /es/category/news/
-        add_rewrite_rule(
-            '^(' . $lang_regex . ')/category/(.+?)/?$',
-            'index.php?lang=$matches[1]&category_name=$matches[2]',
-            'top'
-        );
+            // Tag archives: /es/tag/news/
+            add_rewrite_rule(
+                '^' . $lang . '/tag/(.+?)/?$',
+                'index.php?tag=$matches[1]&lang=' . $lang,
+                'top'
+            );
+        }
+    }
 
-        // Tag archives with language: /es/tag/news/
-        add_rewrite_rule(
-            '^(' . $lang_regex . ')/tag/(.+?)/?$',
-            'index.php?lang=$matches[1]&tag=$matches[2]',
-            'top'
-        );
+    /**
+     * Parse request to map clean URLs to actual post slugs with language suffixes
+     * FIXED: This is the key method that makes clean URLs work with suffixed slugs
+     *
+     * @param array $query_vars Query variables
+     * @return array Modified query variables
+     */
+    public function parse_request($query_vars) {
+        // Only process if we have a language parameter
+        if (!isset($query_vars['lang'])) {
+            return $query_vars;
+        }
 
-        // Author archives with language: /es/author/john/
-        add_rewrite_rule(
-            '^(' . $lang_regex . ')/author/(.+?)/?$',
-            'index.php?lang=$matches[1]&author_name=$matches[2]',
-            'top'
-        );
+        $lang = $query_vars['lang'];
+
+        // Handle pagename (pages and hierarchical post types)
+        if (isset($query_vars['pagename']) && !empty($query_vars['pagename'])) {
+            $query_vars['pagename'] = $this->add_language_suffix_to_path($query_vars['pagename'], $lang);
+        }
+
+        // Handle name (posts)
+        if (isset($query_vars['name']) && !empty($query_vars['name'])) {
+            $query_vars['name'] = $this->add_language_suffix($query_vars['name'], $lang);
+        }
+
+        return $query_vars;
+    }
+
+    /**
+     * Add language suffix to a URL path (handles hierarchical pages)
+     *
+     * @param string $path Path like "parent/child"
+     * @param string $lang Language code
+     * @return string Path with language suffixes like "parent-es/child-es"
+     */
+    private function add_language_suffix_to_path($path, $lang) {
+        // Split path into segments
+        $segments = explode('/', $path);
+        
+        // Add language suffix to each segment
+        $suffixed_segments = array();
+        foreach ($segments as $segment) {
+            if (!empty($segment)) {
+                $suffixed_segments[] = $this->add_language_suffix($segment, $lang);
+            }
+        }
+        
+        return implode('/', $suffixed_segments);
+    }
+
+    /**
+     * Add language suffix to a single slug
+     *
+     * @param string $slug Slug without suffix
+     * @param string $lang Language code
+     * @return string Slug with language suffix
+     */
+    private function add_language_suffix($slug, $lang) {
+        // Check if the slug already has the language suffix
+        if (substr($slug, -strlen($lang) - 1) === '-' . $lang) {
+            return $slug;
+        }
+        
+        // Check if a post with the suffixed slug exists
+        $suffixed_slug = $slug . '-' . $lang;
+        
+        // Try to find the post with this slug
+        $post = get_page_by_path($suffixed_slug, OBJECT, get_post_types());
+        
+        if ($post) {
+            return $suffixed_slug;
+        }
+        
+        // If not found, return original (might be default language or not translated)
+        return $slug;
+    }
+
+    /**
+     * Filter post permalink to show clean URLs without language suffixes
+     * FIXED: Removes language suffix from URLs for clean display
+     *
+     * @param string  $permalink Post permalink
+     * @param \WP_Post $post      Post object
+     * @return string Modified permalink
+     */
+    public function filter_post_link($permalink, $post) {
+        // Get post language
+        $lang = get_post_meta($post->ID, '_language', true);
+
+        // If no language set or default language, return original
+        if (!$lang || $lang === $this->default_language) {
+            return $permalink;
+        }
+
+        // Remove language suffix from the URL
+        $permalink = $this->remove_language_suffix_from_url($permalink, $lang);
+
+        // Add language prefix
+        $home_url = trailingslashit(home_url());
+        $permalink = str_replace($home_url, $home_url . $lang . '/', $permalink);
+
+        return $permalink;
+    }
+
+    /**
+     * Remove language suffix from URL
+     *
+     * @param string $url URL with language suffix
+     * @param string $lang Language code
+     * @return string Clean URL without suffix
+     */
+    private function remove_language_suffix_from_url($url, $lang) {
+        // Pattern to match language suffix before trailing slash or end of URL
+        $pattern = '/-' . preg_quote($lang, '/') . '(\/|$)/';
+        
+        // Replace suffix with just the slash or end
+        $url = preg_replace($pattern, '$1', $url);
+        
+        return $url;
     }
 
     /**
@@ -128,19 +244,47 @@ class URL_Manager {
         }
 
         $translation_id = $translations[$lang];
+        
+        // Get the permalink (will be filtered by filter_post_link)
         $url = get_permalink($translation_id);
 
-        if (!$url) {
-            return false;
-        }
-
-        // Add language prefix if not default language
-        if ($lang !== $this->default_language) {
-            $home_url = trailingslashit(home_url());
-            $url = str_replace($home_url, $home_url . $lang . '/', $url);
-        }
-
         return $url;
+    }
+
+    /**
+     * Set front page for language-only URLs like /es/
+     * FIXED: Properly handles homepage translations
+     *
+     * @param array $query_vars Query variables
+     * @return array Modified query variables
+     */
+    public function set_front_page_for_language($query_vars) {
+        // Check if we have just a language and nothing else
+        if (isset($query_vars['lang']) && 
+            !isset($query_vars['pagename']) && 
+            !isset($query_vars['name']) &&
+            !isset($query_vars['category_name']) &&
+            !isset($query_vars['tag'])) {
+            
+            $lang = $query_vars['lang'];
+            
+            // Get the front page ID
+            $front_page_id = get_option('page_on_front');
+            
+            if ($front_page_id) {
+                // Get the translation of the front page
+                $clone_manager = new Clone_Manager();
+                $translation_id = $clone_manager->get_translation($front_page_id, $lang);
+                
+                if ($translation_id) {
+                    // Set the page_id to show the translated front page
+                    $query_vars['page_id'] = $translation_id;
+                    unset($query_vars['lang']); // Remove lang to prevent query conflicts
+                }
+            }
+        }
+        
+        return $query_vars;
     }
 
     /**
@@ -155,21 +299,16 @@ class URL_Manager {
         }
 
         // Check query string first (fallback method)
-        // Only use get_query_var if WordPress is fully loaded
         global $wp_query;
-        if ($wp_query) {
-            $lang = get_query_var('lang');
+        if ($wp_query && method_exists($wp_query, 'get')) {
+            $lang = $wp_query->get('lang');
             if ($lang && in_array($lang, $this->languages, true)) {
                 $this->current_language = $lang;
                 return $this->current_language;
             }
-        } elseif (isset($_GET['lang']) && in_array($_GET['lang'], $this->languages, true)) {
-            // Fallback if WordPress not fully loaded yet
-            $this->current_language = sanitize_text_field($_GET['lang']);
-            return $this->current_language;
         }
 
-        // Check URL path (sanitize to prevent injection)
+        // Check URL path
         $request_uri = isset($_SERVER['REQUEST_URI']) ? esc_url_raw($_SERVER['REQUEST_URI']) : '';
         $path = trim(parse_url($request_uri, PHP_URL_PATH), '/');
 
@@ -181,12 +320,6 @@ class URL_Manager {
                 $this->current_language = $parts[0];
                 return $this->current_language;
             }
-        }
-
-        // Check session/cookie for language preference
-        if (isset($_COOKIE['st_language']) && in_array($_COOKIE['st_language'], $this->languages, true)) {
-            $this->current_language = $_COOKIE['st_language'];
-            return $this->current_language;
         }
 
         // Default to site's default language
