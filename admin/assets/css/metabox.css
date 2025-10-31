@@ -1,0 +1,382 @@
+/**
+ * Simple Translator Metabox Styles
+ *
+ * Styles for the translation metabox
+ */
+
+/* Metabox Container */
+.st-translations-metabox {
+    padding: 0;
+    font-size: 13px;
+}
+
+/* Current Language Section */
+.st-current-language {
+    padding: 12px;
+    background: #f6f7f7;
+    border-bottom: 1px solid #ddd;
+    margin: -12px -12px 15px -12px;
+}
+
+.st-current-language strong {
+    display: block;
+    margin-bottom: 8px;
+    color: #1d2327;
+}
+
+.language-tag {
+    display: inline-block;
+    background: #0073aa;
+    color: #fff;
+    padding: 4px 10px;
+    border-radius: 3px;
+    font-size: 12px;
+    font-weight: 600;
+    margin-right: 8px;
+}
+
+.language-name {
+    color: #666;
+    font-size: 13px;
+}
+
+.language-name-small {
+    color: #999;
+    font-size: 12px;
+    margin-left: 5px;
+}
+
+/* Translation Status Badge */
+.translation-status {
+    display: inline-block;
+    margin-top: 10px;
+    padding: 6px 12px;
+    border-radius: 3px;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.translation-status.status-not_started {
+    background: #f0f0f1;
+    color: #666;
+}
+
+.translation-status.status-in_progress {
+    background: #fff3cd;
+    color: #856404;
+}
+
+.translation-status.status-completed {
+    background: #d4edda;
+    color: #155724;
+}
+
+.translation-status.status-needs_update {
+    background: #f8d7da;
+    color: #721c24;
+}
+
+/* Translations List */
+.st-translations-list {
+    margin-top: 15px;
+}
+
+.st-translations-list > strong {
+    display: block;
+    margin-bottom: 12px;
+    color: #1d2327;
+}
+
+.translation-item {
+    margin-bottom: 15px;
+    padding: 12px;
+    background: #f6f7f7;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    transition: all 0.2s ease;
+}
+
+.translation-item:hover {
+    background: #fff;
+    border-color: #0073aa;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.translation-header {
+    display: flex;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+.language-label {
+    background: #2271b1;
+    color: #fff;
+    padding: 3px 8px;
+    border-radius: 3px;
+    font-size: 11px;
+    font-weight: 700;
+    margin-right: 8px;
+}
+
+/* Translation Exists */
+.translation-exists {
+    padding: 8px 0;
+}
+
+.translation-title {
+    display: flex;
+    align-items: center;
+    font-weight: 600;
+    margin-bottom: 8px;
+    color: #1d2327;
+}
+
+.translation-title .dashicons {
+    color: #00a32a;
+    margin-right: 5px;
+}
+
+.translation-meta {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 10px;
+    font-size: 12px;
+    flex-wrap: wrap;
+}
+
+.translation-status-badge {
+    padding: 3px 8px;
+    border-radius: 3px;
+    font-size: 11px;
+    font-weight: 600;
+}
+
+.translation-status-badge.status-not_started {
+    background: #f0f0f1;
+    color: #666;
+}
+
+.translation-status-badge.status-in_progress {
+    background: #fff3cd;
+    color: #856404;
+}
+
+.translation-status-badge.status-completed {
+    background: #d4edda;
+    color: #155724;
+}
+
+.translation-status-badge.status-needs_update {
+    background: #f8d7da;
+    color: #721c24;
+}
+
+.translation-modified {
+    color: #666;
+}
+
+.translation-actions {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.translation-actions .button {
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 10px;
+    height: auto;
+    line-height: 1.4;
+}
+
+.translation-actions .dashicons {
+    font-size: 16px;
+    width: 16px;
+    height: 16px;
+    margin-right: 4px;
+}
+
+/* Translation Missing */
+.translation-missing {
+    padding: 8px 0;
+}
+
+.translation-missing-text {
+    display: flex;
+    align-items: center;
+    color: #999;
+    margin-bottom: 10px;
+    font-style: italic;
+}
+
+.translation-missing-text .dashicons {
+    color: #dba617;
+    margin-right: 5px;
+}
+
+.st-create-translation {
+    display: inline-flex;
+    align-items: center;
+}
+
+.st-create-translation .dashicons {
+    font-size: 16px;
+    width: 16px;
+    height: 16px;
+    margin-right: 4px;
+}
+
+/* Status Update Section */
+.st-status-update {
+    margin-top: 15px;
+    padding: 12px;
+    background: #f6f7f7;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+}
+
+.st-status-update label {
+    display: block;
+}
+
+.st-status-update strong {
+    display: block;
+    margin-bottom: 8px;
+}
+
+.st-status-select {
+    margin-top: 5px;
+    transition: border-color 0.2s ease;
+}
+
+.st-status-select.saved {
+    border-color: #00a32a !important;
+    box-shadow: 0 0 0 1px #00a32a;
+}
+
+/* Metabox Notices */
+.st-metabox-notice {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 10px;
+    margin-top: 15px;
+    border-radius: 4px;
+    font-size: 12px;
+}
+
+.st-metabox-notice.notice-warning {
+    background: #fff3cd;
+    border: 1px solid #ffc107;
+    color: #856404;
+}
+
+.st-metabox-notice.notice-info {
+    background: #d1ecf1;
+    border: 1px solid #bee5eb;
+    color: #0c5460;
+}
+
+.st-metabox-notice .dashicons {
+    flex-shrink: 0;
+    margin-top: 2px;
+}
+
+.st-metabox-notice p {
+    margin: 0;
+    line-height: 1.4;
+}
+
+/* Translation Progress */
+.st-translation-progress {
+    margin-top: 15px;
+    padding: 12px;
+    background: #f6f7f7;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+}
+
+.st-progress-label {
+    font-size: 12px;
+    font-weight: 600;
+    color: #1d2327;
+    margin-bottom: 8px;
+}
+
+.st-progress-bar-wrap {
+    width: 100%;
+    height: 24px;
+    background: #fff;
+    border: 1px solid #ddd;
+    border-radius: 12px;
+    overflow: hidden;
+}
+
+.st-progress-bar {
+    height: 100%;
+    background: linear-gradient(90deg, #0073aa 0%, #00a0d2 100%);
+    transition: width 0.3s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.st-progress-percent {
+    color: #fff;
+    font-size: 11px;
+    font-weight: 600;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+}
+
+/* Loading States */
+.st-create-translation.loading,
+.st-sync-translation.loading {
+    position: relative;
+    pointer-events: none;
+}
+
+.st-create-translation.loading .dashicons,
+.st-sync-translation.loading .dashicons {
+    animation: st-spin 1s linear infinite;
+}
+
+@keyframes st-spin {
+    from {
+        transform: rotate(0deg);
+    }
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* Disabled State */
+.st-create-translation:disabled,
+.st-sync-translation:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+/* Responsive Adjustments */
+@media screen and (max-width: 782px) {
+    .st-current-language {
+        padding: 10px;
+    }
+
+    .translation-item {
+        padding: 10px;
+    }
+
+    .translation-actions {
+        flex-direction: column;
+    }
+
+    .translation-actions .button {
+        width: 100%;
+        justify-content: center;
+    }
+
+    .translation-meta {
+        flex-direction: column;
+        gap: 5px;
+    }
+}

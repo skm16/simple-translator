@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(wp option:*)",
+      "Bash(wp post list:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
