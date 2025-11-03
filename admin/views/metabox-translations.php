@@ -56,6 +56,10 @@ if (!defined('ABSPATH')) {
                     $trans_status = get_post_meta($trans_id, '_translation_status', true);
                     $trans_modified = get_post_modified_time('U', false, $trans_id);
                     $trans_modified_date = human_time_diff($trans_modified, current_time('timestamp'));
+
+                    // Get correct permalink (will be filtered by URL Manager)
+                    $trans_permalink = get_permalink($trans_post);
+                    $trans_edit_link = get_edit_post_link($trans_id);
                     ?>
 
                     <div class="translation-exists status-<?php echo esc_attr($trans_status); ?>">
@@ -80,14 +84,15 @@ if (!defined('ABSPATH')) {
                         </div>
 
                         <div class="translation-actions">
-                            <a href="<?php echo esc_url(get_edit_post_link($trans_id)); ?>"
+                            <a href="<?php echo esc_url($trans_edit_link); ?>"
                                class="button button-small">
                                 <span class="dashicons dashicons-edit"></span>
                                 <?php esc_html_e('Edit', 'simple-translator'); ?>
                             </a>
-                            <a href="<?php echo esc_url(get_permalink($trans_id)); ?>"
+                            <a href="<?php echo esc_url($trans_permalink); ?>"
                                class="button button-small"
-                               target="_blank">
+                               target="_blank"
+                               title="<?php echo esc_attr($trans_permalink); ?>">
                                 <span class="dashicons dashicons-visibility"></span>
                                 <?php esc_html_e('View', 'simple-translator'); ?>
                             </a>

@@ -46,6 +46,12 @@ class Translation_Admin {
         // Quick edit
         add_action('quick_edit_custom_box', array($this, 'quick_edit_custom_box'), 10, 2);
         add_action('save_post', array($this, 'save_quick_edit'), 10, 2);
+
+        // Add language filter dropdown to post list
+        add_action('restrict_manage_posts', array($this, 'add_language_filter'));
+
+        // Filter posts by language
+        add_action('pre_get_posts', array($this, 'filter_posts_by_language'));
     }
 
     /**
@@ -442,5 +448,96 @@ class Translation_Admin {
                 update_post_meta($post_id, '_language', $language);
             }
         }
+    }
+
+    /**
+     * Add language filter dropdown to post list
+     *
+     * @param string $post_type Current post type
+     */
+    public function add_language_filter($post_type) {
+        // Only show filter for translatable post types
+        $translatable_types = get_option('st_post_types', array('post', 'page'));
+        if (!in_array($post_type, $translatable_types, true)) {
+            return;
+        }
+
+        // Get enabled languages
+        $languages = get_option('st_enabled_languages', array('en', 'es'));
+
+        // Get current filter value
+        $current_filter = isset($_GET['st_language_filter']) ? sanitize_text_field($_GET['st_language_filter']) : '';
+
+        ?>
+        <select name="st_language_filter" id="st_language_filter">
+            <option value=""><?php esc_html_e('All Languages', 'simple-translator'); ?></option>
+            <?php foreach ($languages as $lang) : ?>
+                <option value="<?php echo esc_attr($lang); ?>" <?php selected($current_filter, $lang); ?>>
+                    <?php echo esc_html(st_get_language_native_name($lang)); ?>
+                </option>
+            <?php endforeach; ?>
+            <option value="no_language" <?php selected($current_filter, 'no_language'); ?>>
+                <?php esc_html_e('No Language Set', 'simple-translator'); ?>
+            </option>
+        </select>
+        <?php
+    }
+
+    /**
+     * Filter posts by selected language
+     *
+     * @param \WP_Query $query The WordPress Query object
+     */
+    public function filter_posts_by_language($query) {
+        // Only apply on admin post list screens
+        if (!is_admin() || !$query->is_main_query()) {
+            return;
+        }
+
+        // Check if we're on the post list screen
+        global $pagenow;
+        if ($pagenow !== 'edit.php') {
+            return;
+        }
+
+        // Check if filter is set
+        if (!isset($_GET['st_language_filter']) || empty($_GET['st_language_filter'])) {
+            return;
+        }
+
+        $filter_value = sanitize_text_field($_GET['st_language_filter']);
+
+        // Get current post type
+        $post_type = isset($_GET['post_type']) ? sanitize_text_field($_GET['post_type']) : 'post';
+
+        // Only apply to translatable post types
+        $translatable_types = get_option('st_post_types', array('post', 'page'));
+        if (!in_array($post_type, $translatable_types, true)) {
+            return;
+        }
+
+        // Get existing meta query
+        $meta_query = $query->get('meta_query');
+        if (!is_array($meta_query)) {
+            $meta_query = array();
+        }
+
+        // Handle special case: no language set
+        if ($filter_value === 'no_language') {
+            $meta_query[] = array(
+                'key'     => '_language',
+                'compare' => 'NOT EXISTS'
+            );
+        } else {
+            // Filter by specific language
+            $meta_query[] = array(
+                'key'     => '_language',
+                'value'   => $filter_value,
+                'compare' => '='
+            );
+        }
+
+        // Update query
+        $query->set('meta_query', $meta_query);
     }
 }

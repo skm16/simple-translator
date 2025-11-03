@@ -21,6 +21,22 @@ if (!defined('ABSPATH')) {
 class Clone_Manager {
 
     /**
+     * Logger instance
+     *
+     * @var Logger
+     */
+    private $logger;
+
+    /**
+     * Constructor
+     */
+    public function __construct() {
+        // Initialize logger
+        $this->logger = new Logger();
+        $this->logger->init();
+    }
+
+    /**
      * Create a translation by cloning a post
      * FIXED: Properly handles slugs with language suffixes
      *
@@ -69,6 +85,16 @@ class Clone_Manager {
         $base_slug = $this->get_base_slug($source->post_name);
         $new_slug = $this->generate_translation_slug($base_slug, $target_lang, $source->post_type);
 
+        // Debug logging for slug generation
+        $this->logger->debug('Creating translation - slug generation', array(
+            'source_id' => $source_id,
+            'source_slug' => $source->post_name,
+            'base_slug' => $base_slug,
+            'generated_slug' => $new_slug,
+            'target_lang' => $target_lang,
+            'post_type' => $source->post_type
+        ));
+
         // Clone the post
         $new_post = array(
             'post_title'    => $source->post_title, // Keep original title for user to translate
@@ -98,6 +124,17 @@ class Clone_Manager {
         update_post_meta($new_id, '_translation_status', 'not_started');
         update_post_meta($new_id, '_source_post_id', $source_id);
         update_post_meta($new_id, '_translation_last_sync', current_time('mysql'));
+
+        // Debug: Verify metadata was saved correctly
+        $saved_lang = get_post_meta($new_id, '_language', true);
+        $this->logger->debug('Translation metadata saved', array(
+            'new_post_id' => $new_id,
+            'target_lang' => $target_lang,
+            'saved_lang_meta' => $saved_lang,
+            'meta_saved_successfully' => ($saved_lang === $target_lang),
+            'group_id' => $group_id,
+            'source_id' => $source_id
+        ));
 
         // Clone taxonomies if enabled
         if (get_option('st_sync_taxonomies', true)) {
@@ -152,15 +189,82 @@ class Clone_Manager {
     private function generate_translation_slug($base_slug, $lang, $post_type) {
         // For default language, use base slug
         $default_lang = get_option('st_default_language', 'en');
+
+        $this->logger->debug('Generating translation slug - input', array(
+            'base_slug' => $base_slug,
+            'lang' => $lang,
+            'post_type' => $post_type,
+            'default_lang' => $default_lang,
+            'is_default_lang' => ($lang === $default_lang)
+        ));
+
         if ($lang === $default_lang) {
-            return wp_unique_post_slug($base_slug, 0, 'draft', $post_type, 0);
+            $result = wp_unique_post_slug($base_slug, 0, 'draft', $post_type, 0);
+            $this->logger->debug('Generated slug for default language', array(
+                'input_slug' => $base_slug,
+                'unique_slug' => $result
+            ));
+            return $result;
         }
-        
-        // For other languages, add language suffix
+
+        // For other languages, create slug with proper number placement
+        // Pattern: base-NUMBER-lang (e.g., "english-2-es") NOT "english-es-2"
+
+        // First, try the basic pattern (no number)
         $slug = $base_slug . '-' . $lang;
-        
-        // Ensure uniqueness (WordPress will add -2, -3 if needed after the language suffix)
-        return wp_unique_post_slug($slug, 0, 'draft', $post_type, 0);
+
+        $this->logger->debug('Checking if basic slug exists', array(
+            'base_slug' => $base_slug,
+            'lang' => $lang,
+            'checking_slug' => $slug
+        ));
+
+        // Check if this slug is already taken
+        $existing = get_page_by_path($slug, OBJECT, $post_type);
+
+        if (!$existing) {
+            // Slug is available, use it
+            $this->logger->debug('Basic slug available, using it', array(
+                'slug' => $slug
+            ));
+            return $slug;
+        }
+
+        // Slug is taken, find next available number
+        // Try: base-2-lang, base-3-lang, base-4-lang, etc.
+        $number = 2;
+        $max_attempts = 100; // Safety limit
+
+        while ($number <= $max_attempts) {
+            $numbered_slug = $base_slug . '-' . $number . '-' . $lang;
+
+            $this->logger->debug('Trying numbered slug', array(
+                'attempt' => $number,
+                'trying_slug' => $numbered_slug
+            ));
+
+            $existing = get_page_by_path($numbered_slug, OBJECT, $post_type);
+
+            if (!$existing) {
+                // Found available slug
+                $this->logger->debug('Found available numbered slug', array(
+                    'slug' => $numbered_slug,
+                    'number' => $number
+                ));
+                return $numbered_slug;
+            }
+
+            $number++;
+        }
+
+        // Fallback: if we somehow exceeded max attempts, let WordPress handle it
+        $this->logger->warning('Could not find available slug after max attempts, falling back to wp_unique_post_slug', array(
+            'base_slug' => $base_slug,
+            'lang' => $lang,
+            'max_attempts' => $max_attempts
+        ));
+
+        return wp_unique_post_slug($base_slug . '-' . $lang, 0, 'draft', $post_type, 0);
     }
 
     /**
@@ -324,9 +428,26 @@ class Clone_Manager {
                 continue;
             }
 
-            // Skip ACF meta (handled separately)
-            if (strpos($key, '_') === 0 && function_exists('acf_get_field_groups')) {
-                continue;
+            // Handle underscore-prefixed meta keys
+            if (strpos($key, '_') === 0) {
+                // Check if this is an ACF field reference key
+                // ACF reference keys look like: _field_name, _field_name_0_subfield
+                // They're critical for ACF to recognize field data
+                $is_acf_reference = false;
+
+                if (function_exists('acf_get_field_groups')) {
+                    // Check common ACF reference key patterns
+                    // Keys that start with underscore but contain non-underscore version in custom_fields
+                    $non_underscore_key = substr($key, 1);
+                    $is_acf_reference = isset($custom_fields[$non_underscore_key]);
+                }
+
+                // Skip non-ACF underscore keys (WordPress internal meta)
+                if (!$is_acf_reference) {
+                    continue;
+                }
+
+                // Allow ACF reference keys to be copied
             }
 
             // Clone the meta value
@@ -373,6 +494,15 @@ class Clone_Manager {
     private function clone_acf_field($field, $source_id, $target_id) {
         $value = get_field($field['name'], $source_id, false);
 
+        // Log field cloning attempt
+        error_log(sprintf(
+            'ST ACF Clone - Field: %s, Type: %s, Source: %d, Target: %d',
+            $field['name'],
+            $field['type'],
+            $source_id,
+            $target_id
+        ));
+
         // Handle different field types
         switch ($field['type']) {
             case 'relationship':
@@ -380,26 +510,62 @@ class Clone_Manager {
                 // Don't clone post relationships initially
                 // Add a note for manual review
                 update_post_meta($target_id, '_acf_relationships_need_review', true);
+                error_log('ST ACF Clone - Skipped relationship field, marked for review');
                 break;
 
             case 'flexible_content':
                 // Clone flexible content layouts
                 if (is_array($value)) {
-                    update_field($field['name'], $value, $target_id);
+                    $result = update_field($field['name'], $value, $target_id);
+                    if (!$result) {
+                        error_log(sprintf(
+                            'ST ACF Clone - FAILED to clone flexible_content field: %s (target: %d)',
+                            $field['name'],
+                            $target_id
+                        ));
+                    } else {
+                        error_log(sprintf(
+                            'ST ACF Clone - Successfully cloned flexible_content field: %s with %d layouts',
+                            $field['name'],
+                            count($value)
+                        ));
+                    }
                 }
                 break;
 
             case 'repeater':
                 // Clone repeater fields
                 if (is_array($value)) {
-                    update_field($field['name'], $value, $target_id);
+                    $result = update_field($field['name'], $value, $target_id);
+                    if (!$result) {
+                        error_log(sprintf(
+                            'ST ACF Clone - FAILED to clone repeater field: %s (target: %d)',
+                            $field['name'],
+                            $target_id
+                        ));
+                    } else {
+                        error_log(sprintf(
+                            'ST ACF Clone - Successfully cloned repeater field: %s with %d rows',
+                            $field['name'],
+                            count($value)
+                        ));
+                    }
                 }
                 break;
 
             case 'group':
                 // Clone group fields
                 if (is_array($value)) {
-                    update_field($field['name'], $value, $target_id);
+                    $result = update_field($field['name'], $value, $target_id);
+                    if (!$result) {
+                        error_log(sprintf(
+                            'ST ACF Clone - FAILED to clone group field: %s (target: %d)',
+                            $field['name'],
+                            $target_id
+                        ));
+                    } else {
+                        error_log('ST ACF Clone - Successfully cloned group field: ' . $field['name']);
+                    }
                 }
                 break;
 
@@ -408,14 +574,42 @@ class Clone_Manager {
             case 'file':
                 // Clone media fields (reference same media)
                 if ($value) {
-                    update_field($field['name'], $value, $target_id);
+                    $result = update_field($field['name'], $value, $target_id);
+                    if (!$result) {
+                        error_log(sprintf(
+                            'ST ACF Clone - FAILED to clone %s field: %s (target: %d)',
+                            $field['type'],
+                            $field['name'],
+                            $target_id
+                        ));
+                    } else {
+                        error_log(sprintf(
+                            'ST ACF Clone - Successfully cloned %s field: %s',
+                            $field['type'],
+                            $field['name']
+                        ));
+                    }
                 }
                 break;
 
             default:
                 // Clone all other field types
                 if (null !== $value) {
-                    update_field($field['name'], $value, $target_id);
+                    $result = update_field($field['name'], $value, $target_id);
+                    if (!$result) {
+                        error_log(sprintf(
+                            'ST ACF Clone - FAILED to clone %s field: %s (target: %d)',
+                            $field['type'],
+                            $field['name'],
+                            $target_id
+                        ));
+                    } else {
+                        error_log(sprintf(
+                            'ST ACF Clone - Successfully cloned %s field: %s',
+                            $field['type'],
+                            $field['name']
+                        ));
+                    }
                 }
                 break;
         }

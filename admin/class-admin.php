@@ -51,6 +51,12 @@ class Admin {
 
         // Handle activation redirect
         add_action('admin_init', array($this, 'activation_redirect'));
+
+        // Menu cloning AJAX handler
+        add_action('wp_ajax_st_clone_menu', array($this, 'ajax_clone_menu'));
+
+        // Register menu translation meta box
+        add_action('load-nav-menus.php', array($this, 'register_menu_translation_meta_box'));
     }
 
     /**
@@ -663,17 +669,18 @@ class Admin {
      * @param string $hook Current admin page hook
      */
     public function enqueue_admin_assets($hook) {
-        // Only load on our settings page
-        if ('settings_page_' . $this->page_slug !== $hook) {
-            return;
+        // Load settings page assets
+        if ('settings_page_' . $this->page_slug === $hook) {
+            wp_enqueue_style(
+                'st-admin-settings',
+                ST_PLUGIN_URL . 'admin/assets/css/admin.css',
+                array(),
+                ST_VERSION
+            );
         }
 
-        wp_enqueue_style(
-            'st-admin-settings',
-            ST_PLUGIN_URL . 'admin/assets/css/admin.css',
-            array(),
-            ST_VERSION
-        );
+        // Load menu translation assets
+        $this->enqueue_menu_translation_assets($hook);
     }
 
     /**
@@ -707,5 +714,159 @@ class Admin {
                 exit;
             }
         }
+    }
+
+    /**
+     * AJAX handler for menu cloning
+     */
+    public function ajax_clone_menu() {
+        // Verify nonce
+        check_ajax_referer('st_clone_menu', 'nonce');
+
+        // Check user capabilities
+        if (!current_user_can('edit_theme_options')) {
+            wp_send_json_error(array(
+                'message' => __('You do not have permission to manage menus.', 'simple-translator')
+            ));
+        }
+
+        // Get parameters
+        $source_menu_id = isset($_POST['source_menu_id']) ? intval($_POST['source_menu_id']) : 0;
+        $target_language = isset($_POST['target_language']) ? sanitize_text_field($_POST['target_language']) : '';
+
+        // Validate inputs
+        if (!$source_menu_id || !$target_language) {
+            wp_send_json_error(array(
+                'message' => __('Invalid menu ID or target language.', 'simple-translator')
+            ));
+        }
+
+        // Get plugin instance and menu handler
+        $plugin = \SimpleTranslator\Plugin::get_instance();
+        $menu_handler = $plugin->menu_handler;
+
+        // Clone the menu
+        $result = $menu_handler->clone_menu($source_menu_id, $target_language);
+
+        // Check for errors
+        if (is_wp_error($result)) {
+            wp_send_json_error(array(
+                'message' => $result->get_error_message()
+            ));
+        }
+
+        // Build success message with location details
+        $message = __('Menu cloned successfully!', 'simple-translator');
+
+        if (!empty($result['locations'])) {
+            $location_names = array();
+            $registered_locations = get_registered_nav_menus();
+
+            foreach ($result['locations'] as $location) {
+                if (isset($registered_locations[$location])) {
+                    $location_names[] = $registered_locations[$location];
+                }
+            }
+
+            if (!empty($location_names)) {
+                $message .= ' ' . sprintf(
+                    /* translators: %s: comma-separated list of menu locations */
+                    __('Assigned to: %s', 'simple-translator'),
+                    implode(', ', $location_names)
+                );
+            }
+        } else {
+            $message .= ' ' . __('Note: Source menu was not assigned to any location, so the cloned menu was not auto-assigned.', 'simple-translator');
+        }
+
+        wp_send_json_success(array(
+            'message' => $message,
+            'new_menu_id' => $result['menu_id'],
+            'assigned_locations' => $result['locations']
+        ));
+    }
+
+    /**
+     * Enqueue menu translation assets
+     *
+     * @param string $hook Current admin page hook
+     */
+    public function enqueue_menu_translation_assets($hook) {
+        // Only load on nav-menus.php page
+        if ($hook !== 'nav-menus.php') {
+            return;
+        }
+
+        // Enqueue JavaScript
+        wp_enqueue_script(
+            'st-menu-translation',
+            ST_PLUGIN_URL . 'admin/js/menu-translation.js',
+            array('jquery'),
+            ST_VERSION,
+            true
+        );
+
+        // Localize script with nonce and AJAX URL
+        wp_localize_script(
+            'st-menu-translation',
+            'stMenuTranslation',
+            array(
+                'ajaxUrl' => admin_url('admin-ajax.php'),
+                'nonce' => wp_create_nonce('st_clone_menu'),
+                'strings' => array(
+                    'cloning' => __('Cloning menu...', 'simple-translator'),
+                    'success' => __('Menu cloned successfully!', 'simple-translator'),
+                    'error' => __('Error cloning menu.', 'simple-translator'),
+                    'confirmClone' => __('This will create a copy of the selected menu for the target language. Continue?', 'simple-translator')
+                )
+            )
+        );
+
+        // Enqueue CSS
+        wp_enqueue_style(
+            'st-menu-translation',
+            ST_PLUGIN_URL . 'admin/css/menu-translation.css',
+            array(),
+            ST_VERSION
+        );
+    }
+
+    /**
+     * Register menu translation meta box
+     */
+    public function register_menu_translation_meta_box() {
+        add_meta_box(
+            'st-menu-translation-box',
+            __('Simple Translator - Menu Translation', 'simple-translator'),
+            array($this, 'render_menu_translation_box'),
+            'nav-menus',
+            'side',
+            'default'
+        );
+    }
+
+    /**
+     * Render menu translation box on nav-menus.php
+     */
+    public function render_menu_translation_box() {
+        // Get all menus
+        $menus = wp_get_nav_menus();
+
+        // Get enabled languages from settings
+        $enabled_languages = get_option('st_enabled_languages', array('en', 'es'));
+
+        // Get language names
+        $available_languages = $this->get_available_languages();
+
+        // Prepare language options
+        $language_options = array();
+        foreach ($enabled_languages as $lang_code) {
+            if (isset($available_languages[$lang_code])) {
+                $language_options[$lang_code] = $available_languages[$lang_code];
+            }
+        }
+
+        // Include the view file
+        include ST_PLUGIN_DIR . 'admin/views/menu-translation.php';
     }
 }

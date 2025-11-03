@@ -21,6 +21,9 @@ class Menu_Handler {
 
     /**
      * Initialize the menu handler
+     *
+     * Note: Menu locations are registered in Plugin::init_components()
+     * This method only sets up frontend filters
      */
     public function init() {
         // Switch menus by language
@@ -28,9 +31,6 @@ class Menu_Handler {
 
         // Add language switcher to menu
         add_filter('wp_nav_menu_items', array($this, 'add_language_switcher_to_menu'), 10, 2);
-
-        // Add menu locations for each language
-        add_action('init', array($this, 'register_language_menu_locations'));
     }
 
     /**
@@ -140,7 +140,7 @@ class Menu_Handler {
      *
      * @param int    $menu_id     Source menu ID
      * @param string $target_lang Target language code
-     * @return int|WP_Error New menu ID or WP_Error on failure
+     * @return array|WP_Error Array with 'menu_id' and 'locations' keys, or WP_Error on failure
      */
     public function clone_menu($menu_id, $target_lang) {
         // Get source menu
@@ -161,7 +161,12 @@ class Menu_Handler {
         $menu_items = wp_get_nav_menu_items($menu_id);
 
         if (!$menu_items) {
-            return $new_menu;
+            // Still try to assign to location even if no items
+            $assigned_locations = $this->assign_menu_to_language_locations($menu_id, $new_menu, $target_lang);
+            return array(
+                'menu_id' => $new_menu,
+                'locations' => $assigned_locations,
+            );
         }
 
         // Map old item IDs to new item IDs (for parent relationships)
@@ -194,6 +199,10 @@ class Menu_Handler {
                 if ($translation_id) {
                     $new_item_data['menu-item-object-id'] = $translation_id;
                 }
+
+                // Clear the URL so WordPress generates it fresh from the object_id
+                // This prevents double language prefixes (e.g., /es/es/page/)
+                $new_item_data['menu-item-url'] = '';
             }
 
             $new_item_id = wp_update_nav_menu_item($new_menu, 0, $new_item_data);
@@ -201,12 +210,17 @@ class Menu_Handler {
             // Store mapping
             $item_map[$item->ID] = $new_item_id;
 
-            // Copy custom meta
+            // Copy custom meta (skip URL for post_type items to avoid double prefixes)
             $meta_keys = array('_menu_item_type', '_menu_item_menu_item_parent', '_menu_item_object_id',
                               '_menu_item_object', '_menu_item_target', '_menu_item_classes',
                               '_menu_item_xfn', '_menu_item_url');
 
             foreach ($meta_keys as $meta_key) {
+                // Skip URL meta for post_type items - let WordPress generate it
+                if ($meta_key === '_menu_item_url' && $item->type === 'post_type') {
+                    continue;
+                }
+
                 $meta_value = get_post_meta($item->ID, $meta_key, true);
                 if ($meta_value) {
                     update_post_meta($new_item_id, $meta_key, $meta_value);
@@ -224,7 +238,117 @@ class Menu_Handler {
             }
         }
 
-        return $new_menu;
+        // Assign cloned menu to language-specific locations
+        $assigned_locations = $this->assign_menu_to_language_locations($menu_id, $new_menu, $target_lang);
+
+        return array(
+            'menu_id' => $new_menu,
+            'locations' => $assigned_locations,
+        );
+    }
+
+    /**
+     * Assign a cloned menu to language-specific locations
+     *
+     * @param int    $source_menu_id Source menu ID
+     * @param int    $new_menu_id    New cloned menu ID
+     * @param string $target_lang    Target language code
+     * @return array Array of locations where menu was assigned
+     */
+    private function assign_menu_to_language_locations($source_menu_id, $new_menu_id, $target_lang) {
+        // Get all current menu location assignments
+        $locations = get_nav_menu_locations();
+        $assigned_locations = array();
+
+        // Debug logging
+        error_log('ST Menu Assignment - Source menu ID: ' . $source_menu_id);
+        error_log('ST Menu Assignment - New menu ID: ' . $new_menu_id);
+        error_log('ST Menu Assignment - Target language: ' . $target_lang);
+        error_log('ST Menu Assignment - Current locations: ' . print_r($locations, true));
+
+        if (!$locations) {
+            $locations = array();
+        }
+
+        // Get registered locations for debugging
+        $registered_locations = get_registered_nav_menus();
+        error_log('ST Menu Assignment - Registered locations: ' . print_r($registered_locations, true));
+
+        // Find which locations the source menu is assigned to
+        foreach ($locations as $location => $menu_id) {
+            error_log("ST Menu Assignment - Checking location '$location' with menu ID '$menu_id' against source ID '$source_menu_id'");
+
+            if ($menu_id == $source_menu_id) {
+                // Create language-specific location name
+                $lang_location = $location . '_' . $target_lang;
+                error_log("ST Menu Assignment - Found match! Creating language location: $lang_location");
+
+                // Check if this language-specific location exists
+                if (isset($registered_locations[$lang_location])) {
+                    // Assign the new menu to this language-specific location
+                    $locations[$lang_location] = $new_menu_id;
+                    $assigned_locations[] = $lang_location;
+                    error_log("ST Menu Assignment - Assigned menu $new_menu_id to location $lang_location");
+                } else {
+                    error_log("ST Menu Assignment - WARNING: Language location $lang_location is not registered!");
+                }
+            }
+        }
+
+        // Save the updated location assignments
+        if (!empty($assigned_locations)) {
+            set_theme_mod('nav_menu_locations', $locations);
+            error_log('ST Menu Assignment - Saved ' . count($assigned_locations) . ' location assignments');
+        } else {
+            error_log('ST Menu Assignment - No locations were assigned (source menu not found in any location)');
+        }
+
+        return $assigned_locations;
+    }
+
+    /**
+     * Reassign menu locations for already-cloned menus
+     *
+     * Useful for fixing menus that were cloned before auto-assignment was added
+     *
+     * @param int    $menu_id     Menu ID to reassign
+     * @param string $target_lang Language code for this menu
+     * @return array|WP_Error Array of assigned locations or WP_Error on failure
+     */
+    public function reassign_menu_locations($menu_id, $target_lang) {
+        // Get the menu
+        $menu = wp_get_nav_menu_object($menu_id);
+        if (!$menu) {
+            return new \WP_Error('invalid_menu', __('Menu not found', 'simple-translator'));
+        }
+
+        // Try to find the source menu by removing language suffix from name
+        $lang_suffix = ' (' . strtoupper($target_lang) . ')';
+        $source_name = str_replace($lang_suffix, '', $menu->name);
+
+        // Find source menu by name
+        $all_menus = wp_get_nav_menus();
+        $source_menu_id = null;
+
+        foreach ($all_menus as $m) {
+            if ($m->name === $source_name) {
+                $source_menu_id = $m->term_id;
+                break;
+            }
+        }
+
+        if (!$source_menu_id) {
+            return new \WP_Error('source_not_found', __('Could not find source menu', 'simple-translator'));
+        }
+
+        // Assign to language-specific locations
+        $assigned = $this->assign_menu_to_language_locations($source_menu_id, $menu_id, $target_lang);
+
+        if (empty($assigned)) {
+            return new \WP_Error('no_assignment', __('Source menu is not assigned to any locations', 'simple-translator'));
+        }
+
+        return $assigned;
     }
 
     /**

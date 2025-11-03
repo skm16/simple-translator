@@ -32,9 +32,8 @@ class Frontend {
         // Add language switcher shortcode
         add_shortcode('st_language_switcher', array($this, 'language_switcher_shortcode'));
 
-        // Filter permalink for translations
-        add_filter('post_link', array($this, 'filter_post_permalink'), 10, 2);
-        add_filter('page_link', array($this, 'filter_post_permalink'), 10, 2);
+        // NOTE: Permalink filtering removed - URL_Manager handles all permalink transformations
+        // Duplicate filters were causing double /es/ prefixes in menu links
 
         // Add language parameter to pagination links
         add_filter('paginate_links', array($this, 'filter_pagination_links'));
@@ -69,6 +68,24 @@ class Frontend {
             'ajaxUrl' => admin_url('admin-ajax.php'),
             'currentLang' => st_get_current_language(),
             'defaultLang' => st_get_default_language(),
+        ));
+
+        // Enqueue language-aware links script (for site logo/home link redirection)
+        wp_enqueue_script(
+            'st-language-aware-links',
+            ST_PLUGIN_URL . 'public/js/language-aware-links.js',
+            array(), // No dependencies - vanilla JS
+            ST_VERSION,
+            true // Load in footer
+        );
+
+        // Localize language-aware links script
+        $url_manager = new URL_Manager();
+        wp_localize_script('st-language-aware-links', 'stLanguageLinks', array(
+            'currentLanguage' => $url_manager->get_current_language(),
+            'defaultLanguage' => get_option('st_default_language', 'en'),
+            'homeUrl' => home_url('/'),
+            'debug' => defined('WP_DEBUG') && WP_DEBUG,
         ));
     }
 
@@ -114,10 +131,25 @@ class Frontend {
      * Filter post permalink to include language
      *
      * @param string   $permalink Post permalink
-     * @param \WP_Post $post      Post object
+     * @param \WP_Post|int $post  Post object or post ID
      * @return string Modified permalink
      */
     public function filter_post_permalink($permalink, $post) {
+        // Handle case where $post is an integer (post ID) instead of object
+        if (is_numeric($post)) {
+            $post_id = (int) $post;
+            $post = get_post($post_id);
+
+            if (!$post) {
+                return $permalink;
+            }
+        }
+
+        // Validate post object
+        if (!is_object($post) || !isset($post->ID)) {
+            return $permalink;
+        }
+
         // Get post language
         $lang = get_post_meta($post->ID, '_language', true);
 

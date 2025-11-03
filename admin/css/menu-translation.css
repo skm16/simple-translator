@@ -1,0 +1,176 @@
+/**
+ * Menu Translation Styles
+ *
+ * Styles for the menu translation interface on nav-menus.php
+ *
+ * @package SimpleTranslator
+ */
+
+/* Content area */
+.st-menu-translation-content {
+    padding: 0;
+}
+
+.st-menu-translation-content > .description {
+    margin: 0 0 15px;
+    color: #646970;
+}
+
+/* Form table */
+.st-menu-clone-form .form-table {
+    margin-top: 0;
+}
+
+.st-menu-clone-form .form-table th {
+    padding: 15px 10px 15px 0;
+    width: 200px;
+}
+
+.st-menu-clone-form .form-table td {
+    padding: 15px 10px;
+}
+
+.st-menu-clone-form select.widefat {
+    max-width: 400px;
+}
+
+.st-menu-clone-form .description {
+    margin-top: 5px;
+    font-style: italic;
+}
+
+/* Actions area */
+.st-menu-clone-actions {
+    margin: 20px 0;
+    padding: 15px;
+    background: #f6f7f7;
+    border: 1px solid #dcdcde;
+    border-radius: 4px;
+}
+
+.st-menu-clone-actions button {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 14px;
+    height: 36px;
+    line-height: 1;
+}
+
+.st-menu-clone-actions button .dashicons {
+    margin-top: -2px;
+}
+
+.st-menu-clone-actions .spinner {
+    float: none;
+    margin: 0 0 0 10px;
+}
+
+/* Message area */
+.st-message {
+    margin-top: 15px;
+}
+
+.st-message .notice {
+    margin: 0;
+}
+
+.st-message .notice p {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.st-message .dashicons {
+    flex-shrink: 0;
+}
+
+/* Info box */
+.st-menu-info {
+    margin-top: 20px;
+    padding: 15px;
+    background: #f0f6fc;
+    border-left: 4px solid #2271b1;
+    border-radius: 2px;
+}
+
+.st-menu-info h4 {
+    margin: 0 0 10px;
+    color: #1d2327;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.st-menu-info ul {
+    margin: 0;
+    padding-left: 20px;
+}
+
+.st-menu-info li {
+    margin: 5px 0;
+    color: #50575e;
+    font-size: 13px;
+    line-height: 1.6;
+}
+
+/* Warning notice */
+.st-menu-translation-content .notice-warning {
+    padding: 10px;
+    margin: 10px 0;
+}
+
+/* Disabled state */
+#st-clone-menu-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* Responsive adjustments */
+@media screen and (max-width: 782px) {
+    .st-menu-clone-form .form-table th,
+    .st-menu-clone-form .form-table td {
+        display: block;
+        width: 100%;
+        padding: 10px 0;
+    }
+
+    .st-menu-clone-form select.widefat {
+        max-width: 100%;
+    }
+
+    .st-menu-clone-actions button {
+        width: 100%;
+        justify-content: center;
+    }
+
+    .st-menu-clone-actions .spinner {
+        margin: 0;
+        position: absolute;
+        right: 15px;
+    }
+}
+
+/* Dark mode support */
+@media (prefers-color-scheme: dark) {
+    .st-menu-translation-content > .description {
+        color: #c3c4c7;
+    }
+
+    .st-menu-clone-actions {
+        background: #1d2327;
+        border-color: #3c434a;
+    }
+
+    .st-menu-info {
+        background: #1e2837;
+        border-left-color: #4a9eff;
+    }
+
+    .st-menu-info h4 {
+        color: #f0f0f1;
+    }
+
+    .st-menu-info li {
+        color: #c3c4c7;
+    }
+}

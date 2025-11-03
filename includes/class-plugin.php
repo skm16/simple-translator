@@ -88,6 +88,13 @@ class Plugin {
     public $logger;
 
     /**
+     * Link Manager instance
+     *
+     * @var Link_Manager
+     */
+    public $link_manager;
+
+    /**
      * Get singleton instance
      *
      * @return Plugin
@@ -138,6 +145,19 @@ class Plugin {
 
         // Initialize logger
         $this->logger->init();
+
+        // Initialize Menu Handler (needed for both admin AJAX and frontend)
+        if (class_exists('SimpleTranslator\\Menu_Handler')) {
+            $this->menu_handler = new Menu_Handler();
+
+            // Register language-specific menu locations (needed in admin for cloning)
+            add_action('init', array($this->menu_handler, 'register_language_menu_locations'));
+        }
+
+        // Initialize Link Manager (needed for frontend link transformation)
+        if (class_exists('SimpleTranslator\\Link_Manager')) {
+            $this->link_manager = new Link_Manager($this->url_manager, $this->clone_manager, $this->logger);
+        }
     }
 
     /**
@@ -173,9 +193,8 @@ class Plugin {
             $this->seo_manager->init();
         }
 
-        // Menu Handler
-        if (class_exists('SimpleTranslator\\Menu_Handler')) {
-            $this->menu_handler = new Menu_Handler();
+        // Menu Handler - initialize hooks for frontend
+        if ($this->menu_handler) {
             $this->menu_handler->init();
         }
 
@@ -195,6 +214,11 @@ class Plugin {
         if (class_exists('SimpleTranslator\\Frontend')) {
             $this->frontend = new Frontend();
             $this->frontend->init();
+        }
+
+        // Link Manager - transform internal links to maintain language context
+        if ($this->link_manager) {
+            $this->link_manager->init();
         }
     }
 
@@ -234,9 +258,10 @@ class Plugin {
     // Redirect to correct language if needed
     add_action('template_redirect', [$this->url_manager, 'redirect_to_language']);
 
+    // Clear link cache when post is saved
+    add_action('save_post', [$this, 'clear_link_cache_on_save']);
 
 
-        
     }
 
     /**
@@ -437,5 +462,21 @@ class Plugin {
         return in_array($post_type, $translatable_types, true);
     }
 
- 
+    /**
+     * Clear link transformation cache when post is saved
+     *
+     * @param int $post_id Post ID
+     */
+    public function clear_link_cache_on_save($post_id) {
+        // Skip autosaves and revisions
+        if (wp_is_post_autosave($post_id) || wp_is_post_revision($post_id)) {
+            return;
+        }
+
+        // Clear link cache for this post
+        if ($this->link_manager) {
+            $this->link_manager->clear_link_cache($post_id);
+        }
+    }
+
 }
