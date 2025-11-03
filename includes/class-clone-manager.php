@@ -492,12 +492,19 @@ class Clone_Manager {
      * @param int   $target_id  Target post ID
      */
     private function clone_acf_field($field, $source_id, $target_id) {
-        $value = get_field($field['name'], $source_id, false);
-
+        // IMPORTANT: Use field KEY instead of NAME for flexible content
+        // This ensures proper field reference keys are maintained
+        $field_key = $field['key'];
+        $field_name = $field['name'];
+        
+        // Get the raw value using the field key
+        $value = get_field($field_key, $source_id, false);
+        
         // Log field cloning attempt
         error_log(sprintf(
-            'ST ACF Clone - Field: %s, Type: %s, Source: %d, Target: %d',
-            $field['name'],
+            'ST ACF Clone - Field: %s (Key: %s), Type: %s, Source: %d, Target: %d',
+            $field_name,
+            $field_key,
             $field['type'],
             $source_id,
             $target_id
@@ -508,25 +515,29 @@ class Clone_Manager {
             case 'relationship':
             case 'post_object':
                 // Don't clone post relationships initially
-                // Add a note for manual review
                 update_post_meta($target_id, '_acf_relationships_need_review', true);
                 error_log('ST ACF Clone - Skipped relationship field, marked for review');
                 break;
 
             case 'flexible_content':
                 // Clone flexible content layouts
-                if (is_array($value)) {
-                    $result = update_field($field['name'], $value, $target_id);
+                if (is_array($value) && !empty($value)) {
+                    // Use the field KEY, not name, for flexible content
+                    $result = update_field($field_key, $value, $target_id);
+                    
+                    // Also ensure the field reference key is properly set
+                    update_post_meta($target_id, '_' . $field_name, $field_key);
+                    
                     if (!$result) {
                         error_log(sprintf(
                             'ST ACF Clone - FAILED to clone flexible_content field: %s (target: %d)',
-                            $field['name'],
+                            $field_name,
                             $target_id
                         ));
                     } else {
                         error_log(sprintf(
                             'ST ACF Clone - Successfully cloned flexible_content field: %s with %d layouts',
-                            $field['name'],
+                            $field_name,
                             count($value)
                         ));
                     }
@@ -534,59 +545,26 @@ class Clone_Manager {
                 break;
 
             case 'repeater':
-                // Clone repeater fields
-                if (is_array($value)) {
-                    $result = update_field($field['name'], $value, $target_id);
-                    if (!$result) {
-                        error_log(sprintf(
-                            'ST ACF Clone - FAILED to clone repeater field: %s (target: %d)',
-                            $field['name'],
-                            $target_id
-                        ));
-                    } else {
-                        error_log(sprintf(
-                            'ST ACF Clone - Successfully cloned repeater field: %s with %d rows',
-                            $field['name'],
-                            count($value)
-                        ));
-                    }
-                }
-                break;
-
             case 'group':
-                // Clone group fields
+                // For complex fields, use field key
                 if (is_array($value)) {
-                    $result = update_field($field['name'], $value, $target_id);
-                    if (!$result) {
-                        error_log(sprintf(
-                            'ST ACF Clone - FAILED to clone group field: %s (target: %d)',
-                            $field['name'],
-                            $target_id
-                        ));
-                    } else {
-                        error_log('ST ACF Clone - Successfully cloned group field: ' . $field['name']);
-                    }
-                }
-                break;
-
-            case 'gallery':
-            case 'image':
-            case 'file':
-                // Clone media fields (reference same media)
-                if ($value) {
-                    $result = update_field($field['name'], $value, $target_id);
+                    $result = update_field($field_key, $value, $target_id);
+                    
+                    // Ensure reference key is set
+                    update_post_meta($target_id, '_' . $field_name, $field_key);
+                    
                     if (!$result) {
                         error_log(sprintf(
                             'ST ACF Clone - FAILED to clone %s field: %s (target: %d)',
                             $field['type'],
-                            $field['name'],
+                            $field_name,
                             $target_id
                         ));
                     } else {
                         error_log(sprintf(
                             'ST ACF Clone - Successfully cloned %s field: %s',
                             $field['type'],
-                            $field['name']
+                            $field_name
                         ));
                     }
                 }
@@ -595,19 +573,20 @@ class Clone_Manager {
             default:
                 // Clone all other field types
                 if (null !== $value) {
-                    $result = update_field($field['name'], $value, $target_id);
+                    $result = update_field($field_key, $value, $target_id);
+                    
                     if (!$result) {
                         error_log(sprintf(
                             'ST ACF Clone - FAILED to clone %s field: %s (target: %d)',
                             $field['type'],
-                            $field['name'],
+                            $field_name,
                             $target_id
                         ));
                     } else {
                         error_log(sprintf(
                             'ST ACF Clone - Successfully cloned %s field: %s',
                             $field['type'],
-                            $field['name']
+                            $field_name
                         ));
                     }
                 }
