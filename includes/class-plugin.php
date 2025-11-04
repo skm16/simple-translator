@@ -114,6 +114,22 @@ class Plugin {
     }
 
     /**
+     * Prevent cloning of the singleton
+     */
+    private function __clone() {
+        // Cloning is not allowed
+    }
+
+    /**
+     * Prevent unserialization of the singleton
+     *
+     * @throws \Exception
+     */
+    public function __wakeup() {
+        throw new \Exception('Cannot unserialize singleton');
+    }
+
+    /**
      * Initialize the plugin
      */
     public function init() {
@@ -397,8 +413,49 @@ class Plugin {
             }
         }
 
+        // Add database indexes for performance
+        self::add_database_indexes();
+
         // Create a flag to indicate first-time activation
         add_option('st_activation_redirect', true);
+    }
+
+    /**
+     * Add database indexes for translation meta keys
+     * Improves performance of translation queries
+     */
+    private static function add_database_indexes() {
+        global $wpdb;
+
+        // Check if indexes already exist to avoid duplicate key errors
+        $indexes_to_add = array(
+            '_translation_group_id' => "ALTER TABLE {$wpdb->postmeta} ADD INDEX st_translation_group_idx (meta_key(191), meta_value(191))",
+            '_language' => "ALTER TABLE {$wpdb->postmeta} ADD INDEX st_language_idx (meta_key(191), meta_value(20))"
+        );
+
+        foreach ($indexes_to_add as $meta_key => $sql) {
+            // Check if index exists
+            $index_name = ($meta_key === '_translation_group_id') ? 'st_translation_group_idx' : 'st_language_idx';
+
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery
+            $index_exists = $wpdb->get_var(
+                $wpdb->prepare(
+                    "SELECT COUNT(1)
+                    FROM INFORMATION_SCHEMA.STATISTICS
+                    WHERE table_schema = %s
+                    AND table_name = %s
+                    AND index_name = %s",
+                    DB_NAME,
+                    $wpdb->postmeta,
+                    $index_name
+                )
+            );
+
+            if (!$index_exists) {
+                // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.SchemaChange
+                $wpdb->query($sql);
+            }
+        }
     }
 
     /**
@@ -418,9 +475,13 @@ class Plugin {
         // Delete transients
         global $wpdb;
         $wpdb->query(
-            "DELETE FROM {$wpdb->options}
-            WHERE option_name LIKE '_transient_st_%'
-            OR option_name LIKE '_transient_timeout_st_%'"
+            $wpdb->prepare(
+                "DELETE FROM {$wpdb->options}
+                WHERE option_name LIKE %s
+                OR option_name LIKE %s",
+                $wpdb->esc_like('_transient_st_') . '%',
+                $wpdb->esc_like('_transient_timeout_st_') . '%'
+            )
         );
     }
 

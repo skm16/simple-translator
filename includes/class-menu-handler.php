@@ -278,7 +278,7 @@ class Menu_Handler {
         foreach ($locations as $location => $menu_id) {
             error_log("ST Menu Assignment - Checking location '$location' with menu ID '$menu_id' against source ID '$source_menu_id'");
 
-            if ($menu_id == $source_menu_id) {
+            if ($menu_id === $source_menu_id) {
                 // Create language-specific location name
                 $lang_location = $location . '_' . $target_lang;
                 error_log("ST Menu Assignment - Found match! Creating language location: $lang_location");

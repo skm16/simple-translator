@@ -166,17 +166,17 @@ class Translation_Admin {
         // Verify nonce
         check_ajax_referer('st_translation_nonce', 'nonce');
 
-        // Check capabilities
-        if (!current_user_can('edit_posts')) {
-            wp_send_json_error(__('You do not have permission to create translations.', 'simple-translator'));
-        }
-
         // Get parameters
         $source_id = isset($_POST['source_id']) ? intval($_POST['source_id']) : 0;
         $target_lang = isset($_POST['target_lang']) ? sanitize_text_field($_POST['target_lang']) : '';
 
         if (!$source_id || !$target_lang) {
             wp_send_json_error(__('Invalid parameters.', 'simple-translator'));
+        }
+
+        // Check capabilities for specific post
+        if (!current_user_can('edit_post', $source_id)) {
+            wp_send_json_error(__('You do not have permission to edit this post.', 'simple-translator'));
         }
 
         // Create translation
@@ -203,17 +203,17 @@ class Translation_Admin {
         // Verify nonce
         check_ajax_referer('st_translation_nonce', 'nonce');
 
-        // Check capabilities
-        if (!current_user_can('edit_posts')) {
-            wp_send_json_error(__('You do not have permission to update translation status.', 'simple-translator'));
-        }
-
         // Get parameters
         $post_id = isset($_POST['post_id']) ? intval($_POST['post_id']) : 0;
         $status = isset($_POST['status']) ? sanitize_text_field($_POST['status']) : '';
 
         if (!$post_id || !$status) {
             wp_send_json_error(__('Invalid parameters.', 'simple-translator'));
+        }
+
+        // Check capabilities for specific post
+        if (!current_user_can('edit_post', $post_id)) {
+            wp_send_json_error(__('You do not have permission to edit this post.', 'simple-translator'));
         }
 
         // Update status
@@ -237,16 +237,16 @@ class Translation_Admin {
         // Verify nonce
         check_ajax_referer('st_translation_nonce', 'nonce');
 
-        // Check capabilities
-        if (!current_user_can('edit_posts')) {
-            wp_send_json_error(__('You do not have permission to sync translations.', 'simple-translator'));
-        }
-
         // Get parameters
         $target_id = isset($_POST['target_id']) ? intval($_POST['target_id']) : 0;
 
         if (!$target_id) {
             wp_send_json_error(__('Invalid parameters.', 'simple-translator'));
+        }
+
+        // Check capabilities for specific post
+        if (!current_user_can('edit_post', $target_id)) {
+            wp_send_json_error(__('You do not have permission to edit this post.', 'simple-translator'));
         }
 
         // Sync translation

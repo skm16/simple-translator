@@ -81,7 +81,7 @@ class SEO_Manager {
             if ($url) {
                 printf(
                     '<link rel="alternate" hreflang="%s" href="%s" />' . "\n",
-                    esc_attr($lang),
+                    esc_attr(st_sanitize_language_code($lang)),
                     esc_url($url)
                 );
             }
@@ -263,8 +263,8 @@ class SEO_Manager {
             $url = get_permalink($post->ID);
         }
 
-        // Basic Open Graph tags
-        echo '<meta property="og:locale" content="' . esc_attr($lang) . '" />' . "\n";
+        // Basic Open Graph tags - sanitize language code for security
+        echo '<meta property="og:locale" content="' . esc_attr(st_sanitize_language_code($lang)) . '" />' . "\n";
         echo '<meta property="og:type" content="article" />' . "\n";
         echo '<meta property="og:title" content="' . esc_attr(get_the_title($post->ID)) . '" />' . "\n";
         echo '<meta property="og:url" content="' . esc_url($url) . '" />' . "\n";
@@ -291,7 +291,7 @@ class SEO_Manager {
 
         foreach ($translations as $trans_lang => $trans_id) {
             if ($trans_lang !== $lang) {
-                echo '<meta property="og:locale:alternate" content="' . esc_attr($trans_lang) . '" />' . "\n";
+                echo '<meta property="og:locale:alternate" content="' . esc_attr(st_sanitize_language_code($trans_lang)) . '" />' . "\n";
             }
         }
     }

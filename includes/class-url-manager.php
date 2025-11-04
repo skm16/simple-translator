@@ -571,27 +571,6 @@ class URL_Manager {
             'path' => $path
         ));
         return $this->current_language;
-
-        // Check session/cookie for language preference (only for homepage without path)
-        if (isset($_COOKIE['st_language']) && in_array($_COOKIE['st_language'], $this->languages, true)) {
-            $this->current_language = $_COOKIE['st_language'];
-            $this->current_language_source = 'cookie';
-            $this->logger->debug('Current language detected from cookie', array(
-                'lang' => $this->current_language,
-                'source' => 'cookie'
-            ));
-            return $this->current_language;
-        }
-
-        // Default to site's default language
-        $this->current_language = $this->default_language;
-        $this->current_language_source = 'default';
-        $this->logger->debug('Current language defaulted', array(
-            'lang' => $this->default_language,
-            'source' => 'default',
-            'request_uri' => $request_uri
-        ));
-        return $this->current_language;
     }
 
     /**
@@ -624,6 +603,13 @@ class URL_Manager {
             ));
         }
 
+        // Fetch all translations at once to avoid N+1 queries
+        $all_translations = array();
+        if ($current_post && isset($current_post->ID)) {
+            $plugin = \SimpleTranslator\Plugin::get_instance();
+            $all_translations = $plugin->clone_manager->get_translations($current_post->ID);
+        }
+
         foreach ($this->languages as $lang) {
             // If this is the current post's language, use current permalink
             if ($current_post && isset($current_post->ID) && $lang === $current_post_lang) {
@@ -635,9 +621,8 @@ class URL_Manager {
                     'url' => $urls[$lang]
                 ));
             } elseif ($current_post && isset($current_post->ID)) {
-                // Different language - look up translation
-                $plugin = \SimpleTranslator\Plugin::get_instance();
-                $translation_id = $plugin->clone_manager->get_translation($current_post->ID, $lang);
+                // Look up translation from pre-fetched array
+                $translation_id = isset($all_translations[$lang]) ? $all_translations[$lang] : false;
 
                 if ($translation_id) {
                     $urls[$lang] = get_permalink($translation_id);
@@ -864,7 +849,7 @@ class URL_Manager {
             $clone_manager = new Clone_Manager();
             $translations = $clone_manager->get_translations($page_on_front);
 
-            if (isset($translations[$lang]) && $translations[$lang] == $post->ID) {
+            if (isset($translations[$lang]) && $translations[$lang] === $post->ID) {
                 // This is a homepage translation
                 $this->logger->debug('Homepage translation detected', array(
                     'post_id' => $post->ID,
@@ -940,15 +925,28 @@ class URL_Manager {
             return;
         }
 
-        setcookie(
-            'st_language',
-            $lang,
-            time() + (86400 * 30), // 30 days
-            COOKIEPATH,
-            COOKIE_DOMAIN,
-            is_ssl(),
-            true // HttpOnly
-        );
+        // Use array format for PHP 7.3+ with SameSite support
+        if (PHP_VERSION_ID >= 70300) {
+            setcookie('st_language', $lang, array(
+                'expires' => time() + (86400 * 30), // 30 days
+                'path' => COOKIEPATH,
+                'domain' => COOKIE_DOMAIN,
+                'secure' => is_ssl(),
+                'httponly' => true,
+                'samesite' => 'Lax' // Prevents CSRF while allowing normal navigation
+            ));
+        } else {
+            // Fallback for older PHP versions
+            setcookie(
+                'st_language',
+                $lang,
+                time() + (86400 * 30), // 30 days
+                COOKIEPATH,
+                COOKIE_DOMAIN,
+                is_ssl(),
+                true // HttpOnly
+            );
+        }
     }
 
     /**

@@ -72,9 +72,27 @@ class Clone_Manager {
             }
         }
 
-        // Check if translation already exists
+        // Use a transient lock to prevent race conditions
+        $lock_key = 'st_creating_' . $source_id . '_' . $target_lang;
+        $lock_timeout = 30; // 30 seconds
+
+        // Try to acquire lock
+        if (false === get_transient($lock_key)) {
+            // Set lock with a short timeout
+            set_transient($lock_key, time(), $lock_timeout);
+        } else {
+            // Lock exists, another process is creating this translation
+            return new \WP_Error(
+                'translation_in_progress',
+                __('Translation is currently being created. Please wait and try again.', 'simple-translator')
+            );
+        }
+
+        // Check if translation already exists (double-check after acquiring lock)
         $existing = $this->get_translation($source_id, $target_lang);
         if ($existing) {
+            // Release lock
+            delete_transient($lock_key);
             return new \WP_Error(
                 'translation_exists',
                 __('Translation already exists for this language', 'simple-translator')
@@ -115,6 +133,8 @@ class Clone_Manager {
         $new_id = wp_insert_post($new_post, true);
 
         if (is_wp_error($new_id)) {
+            // Release lock on failure
+            delete_transient($lock_key);
             return $new_id;
         }
 
@@ -155,6 +175,9 @@ class Clone_Manager {
         // Clear translation cache
         $this->clear_translation_cache($source_id);
         $this->clear_translation_cache($new_id);
+
+        // Release the lock
+        delete_transient($lock_key);
 
         // Log the creation
         do_action('st_translation_created', $new_id, $source_id, $target_lang);
@@ -499,15 +522,14 @@ class Clone_Manager {
         
         // Get the raw value using the field key
         $value = get_field($field_key, $source_id, false);
-        
+
         // Log field cloning attempt
-        error_log(sprintf(
-            'ST ACF Clone - Field: %s (Key: %s), Type: %s, Source: %d, Target: %d',
-            $field_name,
-            $field_key,
-            $field['type'],
-            $source_id,
-            $target_id
+        $this->logger->debug('ACF field clone attempt', array(
+            'field_name' => $field_name,
+            'field_key' => $field_key,
+            'field_type' => $field['type'],
+            'source_id' => $source_id,
+            'target_id' => $target_id
         ));
 
         // Handle different field types
@@ -516,7 +538,10 @@ class Clone_Manager {
             case 'post_object':
                 // Don't clone post relationships initially
                 update_post_meta($target_id, '_acf_relationships_need_review', true);
-                error_log('ST ACF Clone - Skipped relationship field, marked for review');
+                $this->logger->debug('Skipped ACF relationship field, marked for review', array(
+                    'field_name' => $field_name,
+                    'field_type' => $field['type']
+                ));
                 break;
 
             case 'flexible_content':
@@ -527,18 +552,16 @@ class Clone_Manager {
                     
                     // Also ensure the field reference key is properly set
                     update_post_meta($target_id, '_' . $field_name, $field_key);
-                    
+
                     if (!$result) {
-                        error_log(sprintf(
-                            'ST ACF Clone - FAILED to clone flexible_content field: %s (target: %d)',
-                            $field_name,
-                            $target_id
+                        $this->logger->warning('Failed to clone ACF flexible_content field', array(
+                            'field_name' => $field_name,
+                            'target_id' => $target_id
                         ));
                     } else {
-                        error_log(sprintf(
-                            'ST ACF Clone - Successfully cloned flexible_content field: %s with %d layouts',
-                            $field_name,
-                            count($value)
+                        $this->logger->debug('Successfully cloned ACF flexible_content field', array(
+                            'field_name' => $field_name,
+                            'layout_count' => count($value)
                         ));
                     }
                 }
@@ -552,19 +575,17 @@ class Clone_Manager {
                     
                     // Ensure reference key is set
                     update_post_meta($target_id, '_' . $field_name, $field_key);
-                    
+
                     if (!$result) {
-                        error_log(sprintf(
-                            'ST ACF Clone - FAILED to clone %s field: %s (target: %d)',
-                            $field['type'],
-                            $field_name,
-                            $target_id
+                        $this->logger->warning('Failed to clone ACF field', array(
+                            'field_type' => $field['type'],
+                            'field_name' => $field_name,
+                            'target_id' => $target_id
                         ));
                     } else {
-                        error_log(sprintf(
-                            'ST ACF Clone - Successfully cloned %s field: %s',
-                            $field['type'],
-                            $field_name
+                        $this->logger->debug('Successfully cloned ACF field', array(
+                            'field_type' => $field['type'],
+                            'field_name' => $field_name
                         ));
                     }
                 }
@@ -574,19 +595,17 @@ class Clone_Manager {
                 // Clone all other field types
                 if (null !== $value) {
                     $result = update_field($field_key, $value, $target_id);
-                    
+
                     if (!$result) {
-                        error_log(sprintf(
-                            'ST ACF Clone - FAILED to clone %s field: %s (target: %d)',
-                            $field['type'],
-                            $field_name,
-                            $target_id
+                        $this->logger->warning('Failed to clone ACF field', array(
+                            'field_type' => $field['type'],
+                            'field_name' => $field_name,
+                            'target_id' => $target_id
                         ));
                     } else {
-                        error_log(sprintf(
-                            'ST ACF Clone - Successfully cloned %s field: %s',
-                            $field['type'],
-                            $field_name
+                        $this->logger->debug('Successfully cloned ACF field', array(
+                            'field_type' => $field['type'],
+                            'field_name' => $field_name
                         ));
                     }
                 }
